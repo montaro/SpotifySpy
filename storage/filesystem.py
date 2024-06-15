@@ -9,10 +9,11 @@ from utils import mkdir_p
 class FilesystemStorage(Storage):
     def __init__(self, config):
         self.config = config
-        mkdir_p(self.config.filesystem_storage_path)
+        self.path = os.path.expandvars(self.config.filesystem_storage_path)
+        mkdir_p(self.path)
 
     def _get_file_path(self, key: str) -> str:
-        return os.path.join(self.config.filesystem_storage_path, key)
+        return os.path.join(self.path, key)
 
     def get_file(self, key: str) -> StorageData:
         file_path = self._get_file_path(key)

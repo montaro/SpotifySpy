@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "spotify-playlist-telegram"
-version = "0.1.0"
+name = "SpotifySpy"
+version = "1.0"
 description = "Send a message on Telegram when a new track is added to a Spotify playlist"
 authors = ["AhmedlRefaey <ahmed@refaey.me>"]
 readme = "README.md"
