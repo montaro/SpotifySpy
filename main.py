@@ -48,8 +48,9 @@ def _make_spotify_request_headers(client_id: str = config.spotify_client_id, cli
     return headers
 
 
-def get_spotify_playlist(client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret,
-                         playlist_url: str = spotify_playlist_url) -> StorageData:
+def get_spotify_playlist(
+    client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret, playlist_url: str = spotify_playlist_url
+) -> StorageData:
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
     response = requests.get(playlist_url, headers=headers)
     response.raise_for_status()
@@ -86,7 +87,7 @@ def make_chat_message(track: dict, playlist: dict) -> str:
     artists_names = [sanitize_text(artist[NAME]) for artist in track[TRACK][ARTISTS]]
     artists_names = ", ".join(artists_names)
     added_by = get_spotify_user(user_id=track[ADDED_BY][ID])
-    first_name = added_by[DISPLAY_NAME].partition(' ')[0]
+    first_name = added_by[DISPLAY_NAME].partition(" ")[0]
 
     return f"""*{first_name}* just added a new track 🥳
 
@@ -107,9 +108,11 @@ async def main():
     try:
         stored_playlist: StorageData = storage_backend.get_file(playlist_file_key)
     except FileNotFound:
-        logging.warning(f"Playlist file does not exist in the storage with key: {playlist_file_key}"
-                        f"If this is the first run, this is expected. Otherwise, check the storage backend."
-                        f"Trying now to store the current playlist...")
+        logging.warning(
+            f"Playlist file does not exist in the storage with key: {playlist_file_key}"
+            f"If this is the first run, this is expected. Otherwise, check the storage backend."
+            f"Trying now to store the current playlist..."
+        )
         stored_playlist = storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
 
     logging.info(f"Stored playlist: {stored_playlist[NAME]} with ID: {stored_playlist[ID]}")
@@ -125,9 +128,7 @@ async def main():
 
     for new_track in new_tracks:
         logging.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
-        notification_tasks.append(
-            send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
-        )
+        notification_tasks.append(send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist)))
     return notification_tasks
 
 

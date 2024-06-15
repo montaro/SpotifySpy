@@ -10,10 +10,7 @@ from storage import Storage
 from storage.filesystem import FilesystemStorage
 from storage.s3 import S3Storage
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 _storage_backend: Storage
 
@@ -67,7 +64,7 @@ def load_config() -> Config:
     parser = argparse.ArgumentParser()
     for f in fields(Config):
         f_name = f.name
-        parser.add_argument(f'--{f_name}', default=os.getenv(f_name.upper()))
+        parser.add_argument(f"--{f_name}", default=os.getenv(f_name.upper()))
     args = parser.parse_args()
     config_dict = {f.name: getattr(args, f.name) for f in fields(Config)}
     config = _from_dict(config_dict)
@@ -89,7 +86,8 @@ def load_config() -> Config:
                     _raise_missing_config_value_error("s3_secret_access_key")
             case _:
                 raise ValueError(
-                    f"Invalid storage backend, the only valid values are: {constants.STORAGE_FILESYSTEM} and {constants.STORAGE_S3}")
+                    f"Invalid storage backend, the only valid values are: {constants.STORAGE_FILESYSTEM} and {constants.STORAGE_S3}"
+                )
     logging.info("Configuration loaded")
     set_storage_backend(config)
     logging.info(f"Storage backend set to: {config.storage_backend}")

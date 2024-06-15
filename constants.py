@@ -1,2 +1,2 @@
-STORAGE_FILESYSTEM = 'filesystem'
-STORAGE_S3 = 's3'
+STORAGE_FILESYSTEM = "filesystem"
+STORAGE_S3 = "s3"

@@ -17,7 +17,7 @@ class FilesystemStorage(Storage):
     def get_file(self, key: str) -> StorageData:
         file_path = self._get_file_path(key)
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, "r") as file:
                 return json.load(file)
         except FileNotFoundError:
             error_message = f"File: {file_path} does not exist in the filesystem"
@@ -30,7 +30,7 @@ class FilesystemStorage(Storage):
     def put_file(self, key: str, data: StorageData) -> StorageData:
         file_path = self._get_file_path(key)
         try:
-            with open(file_path, 'w') as file:
+            with open(file_path, "w") as file:
                 json.dump(data, file)
                 return data
         except Exception as e:

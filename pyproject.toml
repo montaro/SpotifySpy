@@ -22,3 +22,10 @@ black = "^24.4.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 140
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
