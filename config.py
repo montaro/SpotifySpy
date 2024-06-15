@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 from dataclasses import dataclass, fields
 
@@ -9,9 +8,10 @@ import constants
 from storage import Storage
 from storage.filesystem import FilesystemStorage
 from storage.s3 import S3Storage
+from utils import get_logger
 
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = get_logger()
 
 _storage_backend: Storage
 
@@ -30,6 +30,7 @@ class Config:
     s3_bucket: str
     s3_access_key_id: str
     s3_secret_access_key: str
+    check_interval: int = 60
 
 
 def _from_dict(dict_: dict) -> Config:
@@ -56,12 +57,12 @@ def get_storage_backend() -> Storage:
 
 
 def _raise_missing_config_value_error(f_name: str):
-    logging.error(f"The argument --{f_name} was not provided and the corresponding environment variable {f_name.upper()} was not set.")
+    logger.error(f"The argument --{f_name} was not provided and the corresponding environment variable {f_name.upper()} was not set.")
     exit(1)
 
 
 def load_config() -> Config:
-    logging.info("Loading configuration...")
+    logger.info("Loading configuration...")
     load_dotenv()
     parser = argparse.ArgumentParser()
     for f in fields(Config):
@@ -72,12 +73,15 @@ def load_config() -> Config:
     config = _from_dict(config_dict)
     storage_storage_info_msg = ""
     if config.storage_backend is None:
-        _raise_missing_config_value_error("storage_backend")
+        # _raise_missing_config_value_error("storage_backend")
+        logger.warning("No storage backend provided, using the filesystem storage backend")
+        config.storage_backend = constants.STORAGE_FILESYSTEM
     else:
         match config.storage_backend:
             case constants.STORAGE_FILESYSTEM:
                 if config.filesystem_storage_path is None:
-                    _raise_missing_config_value_error("filesystem_storage_path")
+                    config.filesystem_storage_path = os.getcwd()
+                    logger.warning(f"No storage path provided, using the current directory: {config.filesystem_storage_path}")
                 storage_storage_info_msg = f"Storage path set to: {config.filesystem_storage_path}"
             case constants.STORAGE_S3:
                 if config.s3_region is None:
@@ -94,8 +98,8 @@ def load_config() -> Config:
                 raise ValueError(
                     f"Invalid storage backend, the only valid values are: {constants.STORAGE_FILESYSTEM} and {constants.STORAGE_S3}"
                 )
-    logging.info("Configuration loaded")
+    logger.info("Configuration loaded")
     set_storage_backend(config)
-    logging.info(f"Storage backend is set to: {config.storage_backend}")
-    logging.info(storage_storage_info_msg)
+    logger.info(f"Storage backend is set to: {config.storage_backend}")
+    logger.info(storage_storage_info_msg)
     return config

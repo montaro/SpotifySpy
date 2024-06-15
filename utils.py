@@ -1,4 +1,18 @@
+import logging
 import os
+
+
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+logging.getLogger("botocore").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+logging.getLogger("boto3").setLevel(logging.ERROR)
+
+logger = logging.getLogger("spotifyspy")
+
+
+def get_logger():
+    return logger
 
 
 def sanitize_text(text: str) -> str:

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import time
 
 import nest_asyncio
@@ -9,8 +8,10 @@ from telegram.request import HTTPXRequest
 
 from config import Config, get_storage_backend, load_config
 from storage import FileNotFound, StorageData
-from utils import sanitize_text
+from utils import get_logger, sanitize_text
 
+
+logger = get_logger()
 
 ACCESS_TOKEN = "access_token"
 AUTH_HEADER = "Authorization"
@@ -103,32 +104,32 @@ Added to the playlist: {playlist[NAME]}  [playlist]({playlist[EXTERNAL_URLS][SPO
 async def main():
     storage_backend = get_storage_backend()
     spotify_playlist = get_spotify_playlist()
-    logging.info(f"Spotify playlist: {spotify_playlist[NAME]} with ID: {spotify_playlist[ID]}")
+    logger.info(f"Spotify playlist: {spotify_playlist[NAME]} with ID: {spotify_playlist[ID]}")
 
     playlist_file_key = f"{spotify_playlist[NAME]}.json"
     try:
         stored_playlist: StorageData = storage_backend.get_file(playlist_file_key)
     except FileNotFound:
-        logging.warning(
+        logger.warning(
             f"Playlist file does not exist in the storage with name: {playlist_file_key}\n"
             f"If this is the first run, this is expected. Otherwise, check the storage backend.\n"
             f"Trying now to store the current playlist..."
         )
         stored_playlist = storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
 
-    logging.info(f"Stored playlist: {stored_playlist[NAME]} with ID: {stored_playlist[ID]}")
+    logger.info(f"Stored playlist: {stored_playlist[NAME]} with ID: {stored_playlist[ID]}")
 
     new_tracks = compare_playlists_diff(stored_playlist=stored_playlist, current_playlist=spotify_playlist)
     notification_tasks = []
-    logging.info("Update the stored playlist with the current playlist...")
+    logger.info("Update the stored playlist with the current playlist...")
     storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
 
     if not new_tracks:
-        logging.info("No new tracks have been added to the playlist in the last cycle!")
+        logger.info("No new tracks have been added to the playlist in the last cycle!")
         return notification_tasks
 
     for new_track in new_tracks:
-        logging.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
+        logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
         notification_tasks.append(send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist)))
     return notification_tasks
 
@@ -140,5 +141,10 @@ if __name__ == "__main__":
         tasks = loop.run_until_complete(main())
         for task in asyncio.as_completed(tasks):
             loop.run_until_complete(task)
-        logging.info("Sleeping for 1 minute...\n\n")
-        time.sleep(60)
+        try:
+            check_interval = int(config.check_interval)
+        except ValueError:
+            check_interval = 60
+            logger.warning(f"Invalid check interval value: {config.check_interval}. Using the default value of {check_interval} seconds.")
+        logger.info(f"Sleeping for {check_interval} seconds...\n\n")
+        time.sleep(check_interval)

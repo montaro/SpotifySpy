@@ -1,9 +1,11 @@
 import json
-import logging
 import os
 
 from storage import FileNotFound, SaveFileError, Storage, StorageData
-from utils import mkdir_p
+from utils import get_logger, mkdir_p
+
+
+logger = get_logger()
 
 
 class FilesystemStorage(Storage):
@@ -25,7 +27,7 @@ class FilesystemStorage(Storage):
             raise FileNotFound(error_message)
         except Exception as e:
             error_message = f"Failed to retrieve file with name: {file_path} from the filesystem"
-            logging.error(f"{error_message} with error: {e}")
+            logger.error(f"{error_message} with error: {e}")
             raise FileNotFound(error_message)
 
     def put_file(self, key: str, data: StorageData) -> StorageData:
@@ -36,5 +38,5 @@ class FilesystemStorage(Storage):
                 return data
         except Exception as e:
             error_message = f"Failed to store file with name: {file_path} in the filesystem"
-            logging.error(f"{error_message} with error: {e}")
+            logger.error(f"{error_message} with error: {e}")
             raise SaveFileError(error_message)
