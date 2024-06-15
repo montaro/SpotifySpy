@@ -73,7 +73,6 @@ def load_config() -> Config:
     config = _from_dict(config_dict)
     storage_storage_info_msg = ""
     if config.storage_backend is None:
-        # _raise_missing_config_value_error("storage_backend")
         logger.warning("No storage backend provided, using the filesystem storage backend")
         config.storage_backend = constants.STORAGE_FILESYSTEM
     else:
