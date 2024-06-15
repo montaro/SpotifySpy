@@ -1,13 +1,14 @@
+import argparse
 import logging
 import os
 from dataclasses import dataclass, fields
 
 from dotenv import load_dotenv
 
+import constants
 from storage import Storage
 from storage.filesystem import FilesystemStorage
 from storage.s3 import S3Storage
-
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -55,11 +56,40 @@ def get_storage_backend() -> Storage:
     return _storage_backend
 
 
+def _raise_missing_config_value_error(f_name: str):
+    logging.error(f"The argument --{f_name} was not provided and the corresponding environment variable {f_name.upper()} was not set.")
+    exit(1)
+
+
 def load_config() -> Config:
     logging.info("Loading configuration...")
     load_dotenv()
-    config_dict = {f.name: os.getenv(f.name.upper()) for f in fields(Config)}
+    parser = argparse.ArgumentParser()
+    for f in fields(Config):
+        f_name = f.name
+        parser.add_argument(f'--{f_name}', default=os.getenv(f_name.upper()))
+    args = parser.parse_args()
+    config_dict = {f.name: getattr(args, f.name) for f in fields(Config)}
     config = _from_dict(config_dict)
+    if config.storage_backend is None:
+        _raise_missing_config_value_error("storage_backend")
+    else:
+        match config.storage_backend:
+            case constants.STORAGE_FILESYSTEM:
+                if config.filesystem_storage_path is None:
+                    _raise_missing_config_value_error("filesystem_storage_path")
+            case constants.STORAGE_S3:
+                if config.s3_region is None:
+                    _raise_missing_config_value_error("s3_region")
+                if config.s3_bucket is None:
+                    _raise_missing_config_value_error("s3_bucket")
+                if config.s3_access_key_id is None:
+                    _raise_missing_config_value_error("s3_access_key_id")
+                if config.s3_secret_access_key is None:
+                    _raise_missing_config_value_error("s3_secret_access_key")
+            case _:
+                raise ValueError(
+                    f"Invalid storage backend, the only valid values are: {constants.STORAGE_FILESYSTEM} and {constants.STORAGE_S3}")
     logging.info("Configuration loaded")
     set_storage_backend(config)
     logging.info(f"Storage backend set to: {config.storage_backend}")

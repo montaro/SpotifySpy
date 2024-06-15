@@ -1,16 +1,14 @@
 import asyncio
-import io
-import json
 import logging
 import time
 
-import boto3
 import nest_asyncio
 import requests
 from telegram import Bot
+from telegram.request import HTTPXRequest
 
 from config import Config, load_config, get_storage_backend
-from storage import Storage, StorageData, FileNotFound
+from storage import StorageData, FileNotFound
 from utils import sanitize_text
 
 ACCESS_TOKEN = "access_token"
@@ -29,14 +27,13 @@ config: Config = load_config()
 spotify_playlist_url = f"https://api.spotify.com/v1/playlists/{config.spotify_playlist_id}"
 
 MARKDOWN_V2 = "MarkdownV2"
-S3 = "s3"
 SPOTIFY = "spotify"
 NAME = "name"
 ID = "id"
 EXTERNAL_URLS = "external_urls"
 
-bot = Bot(token=config.bot_token)
-s3_client = boto3.client(S3)
+telegram_request = HTTPXRequest(connection_pool_size=20, connect_timeout=30)
+bot = Bot(token=config.bot_token, request=telegram_request)
 
 
 async def send_notification(message: str, chat_id: str = config.target_chat_id, parse_mode: str = MARKDOWN_V2):
@@ -142,4 +139,4 @@ if __name__ == "__main__":
         for task in asyncio.as_completed(tasks):
             loop.run_until_complete(task)
         logging.info("Sleeping for 1 minute...\n\n")
-        time.sleep(20)
+        time.sleep(60)

@@ -6,11 +6,11 @@ StorageData: TypeAlias = dict
 class Storage:
     @staticmethod
     def get_file(key: str) -> StorageData:
-        pass
+        raise NotImplementedError
 
     @staticmethod
     def put_file(key: str, data: StorageData) -> StorageData:
-        pass
+        raise NotImplementedError
 
 
 class FileNotFound(Exception):
