@@ -10,6 +10,7 @@ from storage import Storage
 from storage.filesystem import FilesystemStorage
 from storage.s3 import S3Storage
 
+
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 _storage_backend: Storage
@@ -50,6 +51,7 @@ def set_storage_backend(config: Config) -> Storage:
 
 
 def get_storage_backend() -> Storage:
+    global _storage_backend
     return _storage_backend
 
 
@@ -68,6 +70,7 @@ def load_config() -> Config:
     args = parser.parse_args()
     config_dict = {f.name: getattr(args, f.name) for f in fields(Config)}
     config = _from_dict(config_dict)
+    storage_storage_info_msg = ""
     if config.storage_backend is None:
         _raise_missing_config_value_error("storage_backend")
     else:
@@ -75,11 +78,14 @@ def load_config() -> Config:
             case constants.STORAGE_FILESYSTEM:
                 if config.filesystem_storage_path is None:
                     _raise_missing_config_value_error("filesystem_storage_path")
+                storage_storage_info_msg = f"Storage path set to: {config.filesystem_storage_path}"
             case constants.STORAGE_S3:
                 if config.s3_region is None:
                     _raise_missing_config_value_error("s3_region")
+                storage_storage_info_msg = f"Storage region set to: {config.s3_region}"
                 if config.s3_bucket is None:
                     _raise_missing_config_value_error("s3_bucket")
+                storage_storage_info_msg = f"{storage_storage_info_msg}, Storage bucket set to: {config.s3_bucket}"
                 if config.s3_access_key_id is None:
                     _raise_missing_config_value_error("s3_access_key_id")
                 if config.s3_secret_access_key is None:
@@ -90,5 +96,6 @@ def load_config() -> Config:
                 )
     logging.info("Configuration loaded")
     set_storage_backend(config)
-    logging.info(f"Storage backend set to: {config.storage_backend}")
+    logging.info(f"Storage backend is set to: {config.storage_backend}")
+    logging.info(storage_storage_info_msg)
     return config

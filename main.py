@@ -11,6 +11,7 @@ from config import Config, get_storage_backend, load_config
 from storage import FileNotFound, StorageData
 from utils import sanitize_text
 
+
 ACCESS_TOKEN = "access_token"
 AUTH_HEADER = "Authorization"
 HTTP_STATUS_CODE = "HTTPStatusCode"
@@ -109,8 +110,8 @@ async def main():
         stored_playlist: StorageData = storage_backend.get_file(playlist_file_key)
     except FileNotFound:
         logging.warning(
-            f"Playlist file does not exist in the storage with key: {playlist_file_key}"
-            f"If this is the first run, this is expected. Otherwise, check the storage backend."
+            f"Playlist file does not exist in the storage with name: {playlist_file_key}\n"
+            f"If this is the first run, this is expected. Otherwise, check the storage backend.\n"
             f"Trying now to store the current playlist..."
         )
         stored_playlist = storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
@@ -119,7 +120,7 @@ async def main():
 
     new_tracks = compare_playlists_diff(stored_playlist=stored_playlist, current_playlist=spotify_playlist)
     notification_tasks = []
-    logging.info(f"Update the stored playlist with the current playlist...")
+    logging.info("Update the stored playlist with the current playlist...")
     storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
 
     if not new_tracks:

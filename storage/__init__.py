@@ -1,5 +1,6 @@
 from typing import TypeAlias
 
+
 StorageData: TypeAlias = dict
 
 

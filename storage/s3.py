@@ -6,6 +6,7 @@ import boto3
 
 from storage import FileNotFound, SaveFileError, Storage, StorageData
 
+
 S3 = "s3"
 HTTP_STATUS_CODE = "HTTPStatusCode"
 RESPONSE_METADATA = "ResponseMetadata"
