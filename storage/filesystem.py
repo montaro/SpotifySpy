@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from storage import Storage, FileNotFound, SaveFileError, StorageData
+from storage import FileNotFound, SaveFileError, Storage, StorageData
 from utils import mkdir_p
 
 

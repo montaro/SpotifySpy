@@ -7,8 +7,8 @@ import requests
 from telegram import Bot
 from telegram.request import HTTPXRequest
 
-from config import Config, load_config, get_storage_backend
-from storage import StorageData, FileNotFound
+from config import Config, get_storage_backend, load_config
+from storage import FileNotFound, StorageData
 from utils import sanitize_text
 
 ACCESS_TOKEN = "access_token"

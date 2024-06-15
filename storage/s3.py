@@ -4,7 +4,7 @@ import logging
 
 import boto3
 
-from storage import Storage, FileNotFound, SaveFileError, StorageData
+from storage import FileNotFound, SaveFileError, Storage, StorageData
 
 S3 = "s3"
 HTTP_STATUS_CODE = "HTTPStatusCode"
