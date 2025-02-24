@@ -21,18 +21,25 @@ TRACK = "track"
 TRACKS = "tracks"
 ARTISTS = "artists"
 ITEMS = "items"
+NEXT = "next"
+TOTAL = "total"
+OFFSET = "offset"
+LIMIT = "limit"
 ADDED_BY = "added_by"
 DISPLAY_NAME = "display_name"
-
-config: Config = load_config()
-
-spotify_playlist_url = f"https://api.spotify.com/v1/playlists/{config.spotify_playlist_id}"
-
 MARKDOWN_V2 = "MarkdownV2"
 SPOTIFY = "spotify"
 NAME = "name"
 ID = "id"
 EXTERNAL_URLS = "external_urls"
+SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
+SPOTIFY_API_PLAYLISTS_URL = f"{SPOTIFY_API_BASE_URL}/playlists"
+SPOTIFY_API_USERS_URL = f"{SPOTIFY_API_BASE_URL}/users"
+
+default_limit = 100
+default_offset = 0
+
+config: Config = load_config()
 
 telegram_request = HTTPXRequest(connection_pool_size=20, connect_timeout=30)
 bot = Bot(token=config.bot_token, request=telegram_request)
@@ -40,6 +47,18 @@ bot = Bot(token=config.bot_token, request=telegram_request)
 
 async def send_notification(message: str, chat_id: str = config.target_chat_id, parse_mode: str = MARKDOWN_V2):
     await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+
+
+def _make_spotify_playlist_url(playlist_id: str = config.spotify_playlist_id) -> str:
+    fields = "id,name,external_urls"
+    return f"{SPOTIFY_API_PLAYLISTS_URL}/{playlist_id}?fields={fields}"
+
+
+def _make_spotify_playlist_tracks_url(
+    playlist_id: str = config.spotify_playlist_id, offset: int = default_offset, limit: int = default_limit
+) -> str:
+    fields = "limit,total,offset,next,items(added_by.id,track(id,name,external_urls,artists(name)))"
+    return f"{SPOTIFY_API_PLAYLISTS_URL}/{playlist_id}/tracks?fields={fields}&offset={offset}&limit={limit}"
 
 
 def _make_spotify_request_headers(client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret) -> dict:
@@ -50,18 +69,51 @@ def _make_spotify_request_headers(client_id: str = config.spotify_client_id, cli
     return headers
 
 
+def get_spotify_playlist_tracks(
+    client_id: str = config.spotify_client_id,
+    client_secret: str = config.spotify_client_secret,
+    playlist_id: str = config.spotify_playlist_id,
+    offset: int = default_offset,
+    limit: int = default_limit,
+) -> dict:
+    playlist_tracks_url = _make_spotify_playlist_tracks_url(playlist_id, offset, limit)
+    headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
+    playlist_tracks_response = requests.get(playlist_tracks_url, headers=headers)
+    playlist_tracks_response.raise_for_status()
+    return playlist_tracks_response.json()
+
+
 def get_spotify_playlist(
-    client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret, playlist_url: str = spotify_playlist_url
+    client_id: str = config.spotify_client_id,
+    client_secret: str = config.spotify_client_secret,
+    playlist_id: str = config.spotify_playlist_id,
 ) -> StorageData:
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
-    response = requests.get(playlist_url, headers=headers)
-    response.raise_for_status()
-    return response.json()
+    playlist_url = _make_spotify_playlist_url(playlist_id)
+    playlist_response = requests.get(playlist_url, headers=headers)
+    playlist_response.raise_for_status()
+    playlist = playlist_response.json()
+
+    playlist_tracks_items = []
+
+    offset = default_offset
+    limit = default_limit
+
+    while True:
+        playlist_tracks = get_spotify_playlist_tracks(client_id, client_secret, playlist_id, offset, limit)
+        playlist_tracks_items.extend(playlist_tracks[ITEMS])
+        if not playlist_tracks[NEXT]:
+            break
+        else:
+            offset = playlist_tracks[OFFSET] + default_limit
+
+    playlist[TRACKS] = {ITEMS: playlist_tracks_items}
+    return playlist
 
 
 def get_spotify_user(user_id: str, client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret) -> dict:
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
-    response = requests.get(f"https://api.spotify.com/v1/users/{user_id}", headers=headers)
+    response = requests.get(f"{SPOTIFY_API_USERS_URL}/{user_id}", headers=headers)
     response.raise_for_status()
     return response.json()
 

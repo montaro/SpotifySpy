@@ -61,9 +61,9 @@ def _raise_missing_config_value_error(f_name: str):
     exit(1)
 
 
-def load_config() -> Config:
+def load_config(env_file_path: str = ".env") -> Config:
     logger.info("Loading configuration...")
-    load_dotenv()
+    load_dotenv(env_file_path)
     parser = argparse.ArgumentParser()
     for f in fields(Config):
         f_name = f.name
