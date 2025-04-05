@@ -1,9 +1,11 @@
 import asyncio
+import random
 import time
 
 import nest_asyncio
 import requests
 from telegram import Bot
+from telegram.error import NetworkError, RetryAfter, TimedOut
 from telegram.request import HTTPXRequest
 
 from config import Config, get_storage_backend, load_config
@@ -45,8 +47,33 @@ telegram_request = HTTPXRequest(connection_pool_size=20, connect_timeout=30)
 bot = Bot(token=config.bot_token, request=telegram_request)
 
 
-async def send_notification(message: str, chat_id: str = config.target_chat_id, parse_mode: str = MARKDOWN_V2):
-    await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+async def send_notification(message: str, chat_id: str = config.target_chat_id, parse_mode: str = MARKDOWN_V2, max_retries: int = 3):
+    for attempt in range(max_retries):
+        try:
+            await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+            # Add a small random delay between messages to prevent rate limiting
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            return
+        except TimedOut:
+            logger.warning(f"Telegram API timeout on attempt {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)  # Exponential backoff
+            else:
+                logger.error("Failed to send notification after all retries")
+                raise
+        except RetryAfter as e:
+            logger.warning(f"Rate limited by Telegram API. Waiting {e.retry_after} seconds")
+            await asyncio.sleep(e.retry_after)
+        except NetworkError as e:
+            logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {str(e)}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+            else:
+                logger.error("Failed to send notification after all retries")
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error sending notification: {str(e)}")
+            raise
 
 
 def _make_spotify_playlist_url(playlist_id: str = config.spotify_playlist_id) -> str:
@@ -172,18 +199,24 @@ async def main():
     logger.info(f"Stored playlist: {stored_playlist[NAME]} with ID: {stored_playlist[ID]}")
 
     new_tracks = compare_playlists_diff(stored_playlist=stored_playlist, current_playlist=spotify_playlist)
-    notification_tasks = []
     logger.info("Update the stored playlist with the current playlist...")
     storage_backend.put_file(key=playlist_file_key, data=spotify_playlist)
 
     if not new_tracks:
         logger.info("No new tracks have been added to the playlist in the last cycle!")
-        return notification_tasks
+        return []
 
+    # Process notifications sequentially to avoid overwhelming the API
     for new_track in new_tracks:
-        logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
-        notification_tasks.append(send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist)))
-    return notification_tasks
+        try:
+            logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
+            await send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
+        except Exception as e:
+            logger.error(f"Failed to send notification for track {new_track[TRACK][NAME]}: {str(e)}")
+            # Continue with other notifications even if one fails
+            continue
+
+    return []
 
 
 if __name__ == "__main__":
