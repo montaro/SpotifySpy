@@ -30,7 +30,10 @@ class Config:
     s3_bucket: str
     s3_access_key_id: str
     s3_secret_access_key: str
-    check_interval: int = 60
+    check_interval: int = 3600
+
+
+# TODO: Assert required env vars are available - Fail to default values when possible
 
 
 def _from_dict(dict_: dict) -> Config:
