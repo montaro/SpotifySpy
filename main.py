@@ -1,9 +1,11 @@
 import asyncio
 import random
 import time
+from typing import Any
 
 import nest_asyncio
 import requests
+from requests.exceptions import HTTPError
 from telegram import Bot
 from telegram.error import NetworkError, RetryAfter, TimedOut
 from telegram.request import HTTPXRequest
@@ -41,6 +43,8 @@ SPOTIFY_API_USERS_URL = f"{SPOTIFY_API_BASE_URL}/users"
 default_limit = 100
 default_offset = 0
 
+current_offset = default_offset
+
 config: Config = load_config()
 
 telegram_request = HTTPXRequest(connection_pool_size=20, connect_timeout=30)
@@ -52,7 +56,7 @@ async def send_notification(message: str, chat_id: str = config.target_chat_id, 
         try:
             await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
             # Add a small random delay between messages to prevent rate limiting
-            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await asyncio.sleep(random.uniform(5, 10))
             return
         except TimedOut:
             logger.warning(f"Telegram API timeout on attempt {attempt + 1}/{max_retries}")
@@ -102,47 +106,136 @@ def get_spotify_playlist_tracks(
     playlist_id: str = config.spotify_playlist_id,
     offset: int = default_offset,
     limit: int = default_limit,
-) -> dict:
+    max_retries: int = 3,
+) -> Any | None:
     playlist_tracks_url = _make_spotify_playlist_tracks_url(playlist_id, offset, limit)
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
-    playlist_tracks_response = requests.get(playlist_tracks_url, headers=headers)
-    playlist_tracks_response.raise_for_status()
-    return playlist_tracks_response.json()
+
+    for attempt in range(max_retries):
+        try:
+            playlist_tracks_response = requests.get(playlist_tracks_url, headers=headers)
+            playlist_tracks_response.raise_for_status()
+            return playlist_tracks_response.json()
+        except HTTPError as e:
+            if e.response.status_code == 429:
+                # Extract retry-after header or use default backoff
+                retry_after = int(e.response.headers.get("Retry-After", 1 + attempt * 2))
+                logger.warning(f"Rate limited by Spotify API. Waiting {retry_after} seconds before retry {attempt + 1}/{max_retries}")
+                time.sleep(retry_after)
+                if attempt == max_retries - 1:
+                    raise
+                return None
+            else:
+                # Re-raise for any other HTTP errors
+                raise
+        except Exception as e:
+            logger.error(f"Error fetching playlist tracks: {str(e)}")
+            if attempt < max_retries - 1:
+                # Exponential backoff with jitter
+                sleep_time = (2**attempt) + random.uniform(0, 1)
+                logger.info(f"Retrying in {sleep_time:.2f} seconds...")
+                time.sleep(sleep_time)
+                return None
+            else:
+                raise
+    return None
 
 
 def get_spotify_playlist(
     client_id: str = config.spotify_client_id,
     client_secret: str = config.spotify_client_secret,
     playlist_id: str = config.spotify_playlist_id,
+    max_retries: int = 3,
 ) -> StorageData:
+    playlist = {}
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
     playlist_url = _make_spotify_playlist_url(playlist_id)
-    playlist_response = requests.get(playlist_url, headers=headers)
-    playlist_response.raise_for_status()
-    playlist = playlist_response.json()
+
+    for attempt in range(max_retries):
+        try:
+            playlist_response = requests.get(playlist_url, headers=headers)
+            playlist_response.raise_for_status()
+            playlist = playlist_response.json()
+            break
+        except HTTPError as e:
+            if e.response.status_code == 429:
+                # Extract retry-after header or use default backoff
+                retry_after = int(e.response.headers.get("Retry-After", 1 + attempt * 2))
+                logger.warning(f"Rate limited by Spotify API. Waiting {retry_after} seconds before retry {attempt + 1}/{max_retries}")
+                time.sleep(retry_after)
+                if attempt == max_retries - 1:
+                    raise
+            else:
+                # Re-raise for any other HTTP errors
+                raise
+        except Exception as e:
+            logger.error(f"Error fetching playlist info: {str(e)}")
+            if attempt < max_retries - 1:
+                # Exponential backoff with jitter
+                sleep_time = (2**attempt) + random.uniform(0, 1)
+                logger.info(f"Retrying in {sleep_time:.2f} seconds...")
+                time.sleep(sleep_time)
+            else:
+                raise
 
     playlist_tracks_items = []
+    global current_offset
 
-    offset = default_offset
-    limit = default_limit
-
-    while True:
-        playlist_tracks = get_spotify_playlist_tracks(client_id, client_secret, playlist_id, offset, limit)
+    try:
+        playlist_tracks = get_spotify_playlist_tracks(client_id, client_secret, playlist_id, current_offset, default_limit, max_retries)
         playlist_tracks_items.extend(playlist_tracks[ITEMS])
-        if not playlist_tracks[NEXT]:
-            break
+        if playlist_tracks[NEXT]:
+            logger.info(f"Not all tracks have been fetched from Spotify playlist: {playlist[NAME]}")
+            current_offset = default_limit
+            logger.info(f"Setting the offset for the next request to {current_offset}")
         else:
-            offset = playlist_tracks[OFFSET] + default_limit
+            logger.info(f"All tracks have been fetched from Spotify playlist: {playlist[NAME]}")
+            logger.info(f"Setting the offset for the next request to {default_offset}")
+            current_offset = default_offset
 
-    playlist[TRACKS] = {ITEMS: playlist_tracks_items}
-    return playlist
+        logger.info(f"Fetched {len(playlist_tracks_items)} tracks from Spotify playlist: {playlist[NAME]}")
+        # current_offset = playlist_tracks[OFFSET] + default_limit
+        # logger.info(f"New offset for fetching tracks: {current_offset}")
+        playlist[TRACKS] = {ITEMS: playlist_tracks_items}
+        return playlist
+    except Exception as e:
+        logger.error(f"Error while fetching tracks at offset {current_offset}: {str(e)}")
+        raise
 
 
-def get_spotify_user(user_id: str, client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret) -> dict:
+def get_spotify_user(
+    user_id: str, client_id: str = config.spotify_client_id, client_secret: str = config.spotify_client_secret, max_retries: int = 3
+) -> Any | None:
     headers = _make_spotify_request_headers(client_id=client_id, client_secret=client_secret)
-    response = requests.get(f"{SPOTIFY_API_USERS_URL}/{user_id}", headers=headers)
-    response.raise_for_status()
-    return response.json()
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(f"{SPOTIFY_API_USERS_URL}/{user_id}", headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except HTTPError as e:
+            if e.response.status_code == 429:
+                # Extract retry-after header or use default backoff
+                retry_after = int(e.response.headers.get("Retry-After", 1 + attempt * 2))
+                logger.warning(f"Rate limited by Spotify API. Waiting {retry_after} seconds before retry {attempt + 1}/{max_retries}")
+                time.sleep(retry_after)
+                if attempt == max_retries - 1:
+                    raise
+                return None
+            else:
+                # Re-raise for any other HTTP errors
+                raise
+        except Exception as e:
+            logger.error(f"Error fetching user info: {str(e)}")
+            if attempt < max_retries - 1:
+                # Exponential backoff with jitter
+                sleep_time = (2**attempt) + random.uniform(0, 1)
+                logger.info(f"Retrying in {sleep_time:.2f} seconds...")
+                time.sleep(sleep_time)
+                return None
+            else:
+                raise
+    return None
 
 
 def get_playlist_tracks(playlist: dict) -> dict:
@@ -211,8 +304,12 @@ async def main():
         try:
             logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
             await send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
-        except Exception as e:
-            logger.error(f"Failed to send notification for track {new_track[TRACK][NAME]}: {str(e)}")
+            # Sleep not to overwhelm the Telegram API
+            sleep_interval = random.randint(1, 10)
+            logger.info(f"Sleeping for {sleep_interval} seconds before sending the next notification...")
+            await asyncio.sleep(sleep_interval)
+        except Exception as exception:
+            logger.error(f"Failed to send notification for track {new_track[TRACK][NAME]}: {str(exception)}")
             # Continue with other notifications even if one fails
             continue
 
@@ -220,16 +317,20 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Always make sure we sleep before the next attempt
+    try:
+        check_interval = int(config.check_interval)
+    except ValueError:
+        check_interval = 3600
+        logger.warning(f"Invalid check interval value: {config.check_interval}. Using the default value of {check_interval} seconds.")
+
     nest_asyncio.apply()
     loop = asyncio.get_event_loop()
     while True:
-        tasks = loop.run_until_complete(main())
-        for task in asyncio.as_completed(tasks):
-            loop.run_until_complete(task)
         try:
-            check_interval = int(config.check_interval)
-        except ValueError:
-            check_interval = 60
-            logger.warning(f"Invalid check interval value: {config.check_interval}. Using the default value of {check_interval} seconds.")
-        logger.info(f"Sleeping for {check_interval} seconds...\n\n")
-        time.sleep(check_interval)
+            loop.run_until_complete(main())
+            logger.info(f"Sleeping for {check_interval} seconds before the next check...")
+            time.sleep(check_interval)
+        except Exception as e:
+            logger.error(f"Error in main execution loop: {str(e)}")
+            logger.exception("Main loop exception details:")
