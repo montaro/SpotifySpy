@@ -303,11 +303,15 @@ async def main():
     for new_track in new_tracks:
         try:
             logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
-            await send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
-            # Sleep not to overwhelm the Telegram API
-            sleep_interval = random.randint(1, 10)
-            logger.info(f"Sleeping for {sleep_interval} seconds before sending the next notification...")
-            await asyncio.sleep(sleep_interval)
+            if current_offset == 0:
+                await send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
+                # Sleep not to overwhelm the Telegram API
+                sleep_interval = random.randint(1, 10)
+                logger.info(f"Sleeping for {sleep_interval} seconds before sending the next notification...")
+                await asyncio.sleep(sleep_interval)
+            else:
+                logger.info(f"Not all tracks have been fetched from Spotify playlist: {spotify_playlist[NAME]}")
+                logger.info(f"Skipping sending a chat message for track {new_track[TRACK][NAME]}")
         except Exception as exception:
             logger.error(f"Failed to send notification for track {new_track[TRACK][NAME]}: {str(exception)}")
             # Continue with other notifications even if one fails
