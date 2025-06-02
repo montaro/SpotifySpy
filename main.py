@@ -44,6 +44,7 @@ default_limit = 100
 default_offset = 0
 
 current_offset = default_offset
+send_notification_flag = True
 
 config: Config = load_config()
 
@@ -180,22 +181,37 @@ def get_spotify_playlist(
 
     playlist_tracks_items = []
     global current_offset
+    global send_notification_flag
 
     try:
         playlist_tracks = get_spotify_playlist_tracks(client_id, client_secret, playlist_id, current_offset, default_limit, max_retries)
         playlist_tracks_items.extend(playlist_tracks[ITEMS])
         if playlist_tracks[NEXT]:
-            logger.info(f"Not all tracks have been fetched from Spotify playlist: {playlist[NAME]}")
-            current_offset = default_limit
-            logger.info(f"Setting the offset for the next request to {current_offset}")
+            logger.info(
+                f"Tracks up to the limit have been fetched from Spotify playlist: {playlist[NAME]} - Assuming we are recovering the playlist..."
+            )
+            current_offset += default_limit
+            logger.info(f"Offset is set to {current_offset} for the next request")
+
+            logger.info(f"Disabling notifications for the current cycle as we are recovering the playlist...")
+            send_notification_flag = False
         else:
-            logger.info(f"All tracks have been fetched from Spotify playlist: {playlist[NAME]}")
-            logger.info(f"Setting the offset for the next request to {default_offset}")
-            current_offset = default_offset
+            if current_offset % default_limit == 0:
+                logger.info(
+                    f"Still in the middle of fetching tracks from Spotify playlist: {playlist[NAME]} - " f"Keep the notifications disabled"
+                )
+                send_notification_flag = False
+            else:
+                logger.debug(
+                    f"All tracks have been fetched from Spotify playlist: {playlist[NAME]} - "
+                    f"Enabling notifications for the current cycle..."
+                )
+                send_notification_flag = True
+
+            logger.info(f"Setting the offset for the next request to {playlist_tracks[TOTAL]}")
+            current_offset = playlist_tracks[TOTAL]
 
         logger.info(f"Fetched {len(playlist_tracks_items)} tracks from Spotify playlist: {playlist[NAME]}")
-        # current_offset = playlist_tracks[OFFSET] + default_limit
-        # logger.info(f"New offset for fetching tracks: {current_offset}")
         playlist[TRACKS] = {ITEMS: playlist_tracks_items}
         return playlist
     except Exception as e:
@@ -303,14 +319,14 @@ async def main():
     for new_track in new_tracks:
         try:
             logger.info(f"Playlist has been updated with a new track: {new_track[TRACK][NAME]} - Sending a chat message...")
-            if current_offset == 0:
+            if send_notification_flag:
                 await send_notification(message=make_chat_message(track=new_track, playlist=spotify_playlist))
                 # Sleep not to overwhelm the Telegram API
                 sleep_interval = random.randint(1, 10)
                 logger.info(f"Sleeping for {sleep_interval} seconds before sending the next notification...")
                 await asyncio.sleep(sleep_interval)
             else:
-                logger.info(f"Not all tracks have been fetched from Spotify playlist: {spotify_playlist[NAME]}")
+                logger.info(f"Looks like we are recovering the Spotify playlist: {spotify_playlist[NAME]}")
                 logger.info(f"Skipping sending a chat message for track {new_track[TRACK][NAME]}")
         except Exception as exception:
             logger.error(f"Failed to send notification for track {new_track[TRACK][NAME]}: {str(exception)}")
